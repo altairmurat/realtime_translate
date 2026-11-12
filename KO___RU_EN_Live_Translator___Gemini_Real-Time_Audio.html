@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KO → RU/EN Live Translator | Gemini Real-Time Audio</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans KR', 'sans-serif'],
+            kr: ['Noto Sans KR', 'Inter', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans KR', sans-serif;
+      background-color: #090d16;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .pulse-ring {
+      animation: pulseRing 1.8s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      70% { transform: scale(1.35); opacity: 0; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.45);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.7);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
+
+  <!-- Toast Notification -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-30 glass-panel border-b border-slate-800/80 px-4 py-3 sm:px-6">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-cyan-400 shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+          <span id="headerStatusDot" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-500 ring-2 ring-slate-900"></span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">KO → RU / EN Live</h1>
+            <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">Gemini API</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Синхронный переводчик с микрофона в реальном времени (한국어 → Русский / English)</p>
+        </div>
+      </div>
+
+      <!-- Quick Controls Bar -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Target Language Selector -->
+        <div class="inline-flex rounded-lg bg-slate-900/90 p-1 border border-slate-800" role="group">
+          <button type="button" id="langBtnBoth" onclick="setTargetLang('both')" class="px-2.5 py-1 text-xs font-medium rounded-md transition bg-indigo-600 text-white shadow">
+            RU + EN
+          </button>
+          <button type="button" id="langBtnRu" onclick="setTargetLang('ru')" class="px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-400 hover:text-white">
+            Только RU
+          </button>
+          <button type="button" id="langBtnEn" onclick="setTargetLang('en')" class="px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-400 hover:text-white">
+            Only EN
+          </button>
+        </div>
+
+        <!-- Zen Mode Button -->
+        <button type="button" id="zenToggleBtn" onclick="toggleZenMode()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700/70 transition flex items-center gap-1.5" title="Крупный режим субтитров">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+          </svg>
+          <span class="hidden md:inline">Субтитры</span>
+        </button>
+
+        <!-- Render Deploy Guide Modal Button -->
+        <button type="button" onclick="openModal('deployModal')" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
+          </svg>
+          <span>Render ENV</span>
+        </button>
+
+        <!-- API Settings Button -->
+        <button type="button" onclick="openModal('settingsModal')" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <span id="keyStatusBadge" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>API & Настройки</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4">
+
+    <!-- Top Control Deck: Mic + Audio Visualizer + Mode Selector -->
+    <section id="controlDeck" class="glass-panel rounded-2xl p-4 sm:p-5 shadow-xl">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+
+        <!-- Left: Primary Mic Trigger & Status -->
+        <div class="lg:col-span-5 flex items-center gap-4">
+          <div class="relative flex-shrink-0">
+            <span id="micPulseRing" class="hidden absolute inset-0 rounded-full bg-rose-500 pulse-ring pointer-events-none"></span>
+            <button
+              type="button"
+              id="micToggleBtn"
+              onclick="toggleListening()"
+              class="relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center transition transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              title="Старт / Стоп микрофона"
+            >
+              <svg id="micIconStart" class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+              <svg id="micIconStop" class="w-8 h-8 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span id="listenStateBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                <span id="listenStateDot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <span id="listenStateText">Ожидание микрофона</span>
+              </span>
+              <span id="latencyBadge" class="text-[11px] text-slate-400 font-mono hidden">-- ms</span>
+            </div>
+            <p id="statusSubtext" class="text-xs text-slate-400 mt-1.5 truncate">
+              Нажмите на микрофон, чтобы начать слушать корейскую речь (ko-KR)
+            </p>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
+                <input type="checkbox" id="ttsToggle" onchange="toggleTts(this.checked)" class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0" />
+                <span>Озвучивать перевод (TTS)</span>
+              </label>
+              <span class="text-slate-700">•</span>
+              <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
+                <input type="checkbox" id="autoTranslateInterimToggle" checked onchange="toggleInterimStream(this.checked)" class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0" />
+                <span>Мгновенный стрим длинных фраз</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: Real-time Audio Waveform Canvas -->
+        <div class="lg:col-span-4 flex flex-col gap-1.5">
+          <div class="flex items-center justify-between text-[11px] text-slate-400">
+            <span>Аудиопоток (Микрофон)</span>
+            <span id="dbMeterText" class="font-mono text-slate-400">-∞ dB</span>
+          </div>
+          <div class="relative h-14 w-full rounded-xl bg-slate-950/90 border border-slate-800/90 overflow-hidden">
+            <canvas id="waveformCanvas" class="w-full h-full block"></canvas>
+          </div>
+        </div>
+
+        <!-- Right: Capture Engine Mode + Demo Trigger -->
+        <div class="lg:col-span-3 flex flex-col gap-2">
+          <div>
+            <label for="captureModeSelect" class="block text-[11px] font-medium text-slate-400 mb-1">Режим захвата речи</label>
+            <select
+              id="captureModeSelect"
+              onchange="changeCaptureMode(this.value)"
+              class="w-full rounded-lg bg-slate-900 border border-slate-700/80 text-xs text-slate-200 px-2.5 py-2 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="hybrid">⚡ Web Speech (ko-KR) + gemini-3.5-flash-lite (Мгновенно)</option>
+              <option value="direct_audio">🎙️ Прямое аудио в Gemini (Чанки по 5 сек)</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick="triggerDemoPhrase()"
+              class="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition text-center"
+            >
+              ▶ Тест корейской фразы
+            </button>
+            <button
+              type="button"
+              onclick="clearHistory()"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-slate-700/80 transition"
+              title="Очистить историю"
+            >
+              Очистить
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Live Active Buffer Banner (What is being heard right now) -->
+    <section class="glass-panel rounded-2xl p-4 sm:p-5 border-l-4 border-l-indigo-500 shadow-lg">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400">Сейчас в эфире (Live Buffer)</span>
+          <span id="translatingSpinner" class="hidden inline-flex items-center gap-1.5 text-xs text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+            <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span>Gemini переводит...</span>
+          </span>
+        </div>
+        <span id="activeEngineLabel" class="text-[11px] text-slate-400 font-mono">Модель: gemini-3.5-flash-lite</span>
+      </div>
+
+      <!-- Current Live Korean + Instant Preview Translation -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+        <div class="rounded-xl bg-slate-900/85 border border-slate-800 p-3">
+          <div class="text-[11px] font-medium text-slate-400 mb-1 flex items-center justify-between">
+            <span>🇰🇷 Распознанная корейская речь (한국어)</span>
+            <span id="liveCharCount" class="font-mono text-[10px] text-slate-500">0 симв.</span>
+          </div>
+          <p id="liveKoreanText" class="font-kr text-base sm:text-lg font-medium text-white min-h-[1.75rem] break-words">
+            <span class="text-slate-500 italic text-sm">Ожидание корейской речи с микрофона...</span>
+          </p>
+        </div>
+
+        <div class="rounded-xl bg-slate-900/85 border border-slate-800 p-3">
+          <div class="text-[11px] font-medium text-slate-400 mb-1 flex items-center justify-between">
+            <span>⚡ Быстрый предпросмотр перевода (Live Stream)</span>
+            <span class="text-[10px] text-indigo-400">Авто-обновление</span>
+          </div>
+          <div id="liveInterimTranslation" class="text-sm sm:text-base text-cyan-200 min-h-[1.75rem] break-words">
+            <span class="text-slate-500 italic text-sm">Перевод появится прямо во время речи...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Korean Input Fallback / Quick Test Bar -->
+      <form id="manualInputForm" onsubmit="handleManualSubmit(event)" class="mt-3 flex gap-2">
+        <input
+          type="text"
+          id="manualKoreanInput"
+          placeholder="Или введите / вставьте фразу на корейском вручную (например: 오늘 회의 시간 언제예요?)..."
+          class="flex-1 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-indigo-500 px-3.5 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
+        />
+        <button
+          type="submit"
+          class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs sm:text-sm font-semibold text-white transition flex-shrink-0"
+        >
+          Перевести
+        </button>
+      </form>
+    </section>
+
+    <!-- Translation Feed Section -->
+    <section class="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden shadow-xl min-h-[380px]">
+      <!-- Feed Header -->
+      <div class="px-4 py-3 sm:px-5 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 bg-slate-900/50">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-slate-200">Лента синхронного перевода</h2>
+          <span id="feedCountBadge" class="px-2 py-0.5 text-xs font-mono rounded-full bg-slate-800 text-slate-300 border border-slate-700">0</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            onclick="copyAllTranscript()"
+            class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span>Копировать всё</span>
+          </button>
+          <button
+            type="button"
+            onclick="exportTranscriptTxt()"
+            class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Скачать .TXT</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feed List -->
+      <div id="translationFeed" class="flex-1 p-4 sm:p-5 space-y-3 overflow-y-auto max-h-[540px]">
+        <!-- Populated dynamically by JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings & API Key Modal -->
+  <div id="settingsModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="glass-panel rounded-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-700 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>⚙️ Настройки Gemini API и перевода</span>
+        </h3>
+        <button type="button" onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          ✕
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        <div>
+          <label for="apiKeyInput" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+            Gemini API Key
+          </label>
+          <div class="flex gap-2">
+            <input
+              type="password"
+              id="apiKeyInput"
+              placeholder="AIzaSy..."
+              class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+            />
+            <button
+              type="button"
+              onclick="toggleKeyVisibility()"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700"
+            >
+              Показать
+            </button>
+          </div>
+          <p id="envDetectionStatus" class="text-[11px] text-slate-400 mt-1.5">
+            Проверка переменной окружения Render...
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="geminiModelSelect" class="block text-xs font-medium text-slate-300 mb-1">Модель Gemini</label>
+            <select
+              id="geminiModelSelect"
+              class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite (По умолчанию — Ультра-быстрая)</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="chunkDurationSelect" class="block text-xs font-medium text-slate-300 mb-1">Длина аудио-чанка (Direct Audio)</label>
+            <select
+              id="chunkDurationSelect"
+              class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="4000">4 секунды</option>
+              <option value="5000" selected>5 секунд (Оптимально)</option>
+              <option value="7000">7 секунд</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="contextPromptInput" class="block text-xs font-medium text-slate-300 mb-1">
+            Контекст беседы (помогает Gemini точнее переводить сленг и термины)
+          </label>
+          <input
+            type="text"
+            id="contextPromptInput"
+             value="Повседневный разговор, работа, IT и жизнь в Корее. Переводи естественно и точно."
+            class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+        <button
+          type="button"
+          onclick="closeModal('settingsModal')"
+          class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300"
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          onclick="saveSettings()"
+          class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/25"
+        >
+          Сохранить настройки
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Render Deployment Guide Modal -->
+  <div id="deployModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="glass-panel rounded-2xl max-w-2xl w-full p-5 sm:p-6 border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>🚀 Как задеплоить на Render с переменной GEMINI_API_KEY</span>
+        </h3>
+        <button type="button" onclick="closeModal('deployModal')" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          ✕
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+        <p>
+          Этот файл уже содержит специальный маркер <code class="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono">__RENDER_GEMINI_API_KEY__</code>, Выберите удобный способ деплоя на Render:
+        </p>
+
+        <div class="rounded-xl bg-slate-900/95 border border-slate-800 p-4 space-y-2">
+          <div class="font-semibold text-emerald-400">Способ 1 (Самый простой — Static Site с 1 файлом index.html в GitHub)</div>
+          <ol class="list-decimal list-inside space-y-1.5 text-xs text-slate-300">
+            <li>Переименуйте этот файл в <code class="text-white font-mono">index.html</code> и загрузите в ваш GitHub-репозиторий.</li>
+            <li>В панели <strong>Render.com</strong> нажмите <strong>New + → Static Site</strong> и подключите репозиторий.</li>
+            <li>Во вкладке <strong>Environment</strong> добавьте переменную:
+              <div class="mt-1 font-mono bg-slate-950 p-2 rounded border border-slate-800 text-amber-300">
+                Key: GEMINI_API_KEY &nbsp;&nbsp;|&nbsp;&nbsp; Value: ваш_ключ_AIza...
+              </div>
+            </li>
+            <li>В поле <strong>Build Command</strong> укажите эту команду (она автоматически подставит ваш <code class="font-mono">GEMINI_API_KEY</code> из Environment прямо в HTML при сборке):</li>
+          </ol>
+          <div class="flex items-center gap-2 mt-2">
+            <code id="renderBuildCmd" class="flex-1 block bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-xs text-emerald-300 overflow-x-auto">sed -i "s|__RENDER_GEMINI_API_KEY__|$GEMINI_API_KEY|g" index.html</code>
+            <button type="button" onclick="copyText('sed -i &quot;s|__RENDER_GEMINI_API_KEY__|$GEMINI_API_KEY|g&quot; index.html')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white flex-shrink-0">
+              Копировать
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400">Publish Directory укажите: <code class="text-white font-mono">.</code> (точка)</p>
+        </div>
+
+        <div class="rounded-xl bg-slate-900/95 border border-slate-800 p-4 space-y-2">
+          <div class="font-semibold text-indigo-400">Способ 2 (Или введите ключ прямо в интерфейсе)</div>
+          <p class="text-xs text-slate-400">
+            Вы также можете в любой момент нажать кнопку <strong>«API & Настройки»</strong> в правом верхнем углу страницы и вставить ключ вручную — он сохранится в браузере (<code class="font-mono">localStorage</code>).
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-5 flex justify-end pt-3 border-t border-slate-800">
+        <button type="button" onclick="closeModal('deployModal')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">
+          Понятно
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. ENVIRONMENT & CONFIGURATION STATE
+    // =========================================================================
+    // Render Static Site Build Command replaces __RENDER_GEMINI_API_KEY__ automatically:
+    // sed -i "s|__RENDER_GEMINI_API_KEY__|$GEMINI_API_KEY|g" index.html
+    const RENDER_INJECTED_KEY = "__RENDER_GEMINI_API_KEY__";
+
+    const state = {
+      apiKey: "",
+      keySource: "none", // 'render_env' | 'server_env' | 'local_storage' | 'none'
+      model: "gemini-3.5-flash-lite",
+      targetLang: "both", // 'both' | 'ru' | 'en'
+      captureMode: "hybrid", // 'hybrid' (Web Speech ko-KR + Gemini) | 'direct_audio' (MediaRecorder + Gemini)
+      chunkDurationMs: 5000,
+      ttsEnabled: false,
+      autoStreamInterim: true,
+      zenMode: false,
+      contextPrompt: "Повседневный разговор, работа, IT и жизнь в Корее. Переводи естественно и точно.",
+      isListening: false,
+      entries: [],
+      interimText: "",
+      lastInterimTranslated: "",
+      interimDebounceTimer: null,
+      inFlightCount: 0
+    };
+
+    // Audio & Recognition instances
+    let recognition = null;
+    let audioContext = null;
+    let analyserNode = null;
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let chunkIntervalTimer = null;
+    let animFrameId = null;
+
+    // Demo Korean phrases for instant testing
+    const DEMO_PHRASES = [
+      "안녕하세요! 오늘 프로젝트 회의는 오후 세 시에 시작합니다. 준비 다 되셨나요?",
+      "서울역에서 강남역까지 지하철로 얼마나 걸리는지 알려주실 수 있나요?",
+      "이거 진짜 대박이네요! 실시간으로 한국어가 러시아어랑 영어로 바로 번역돼요.",
+      "내일 날씨가 많이 추워진다고 하니까 따뜻하게 입고 나오세요."
+    ];
+    let demoIndex = 0;
+
+    // =========================================================================
+    // 2. INITIALIZATION & STORAGE HELPERS
+    // =========================================================================
+    function safeGetStorage(key, fallback = "") {
+      try {
+        const val = localStorage.getItem(key);
+        return val !== null ? val : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function safeSetStorage(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        // Ignore storage errors in sandboxed iframes
+      }
+    }
+
+    async function resolveApiKey() {
+      // 1. Check Render build-time injected variable
+      if (
+        RENDER_INJECTED_KEY &&
+        RENDER_INJECTED_KEY !== "__RENDER_" + "GEMINI_API_KEY__" &&
+        RENDER_INJECTED_KEY.trim().length > 10
+      ) {
+        state.apiKey = RENDER_INJECTED_KEY.trim();
+        state.keySource = "render_env";
+        updateApiKeyStatusUI();
+        return;
+      }
+
+      // 2. Check window.ENV or window.GEMINI_API_KEY if injected via external script
+      if (window.GEMINI_API_KEY && String(window.GEMINI_API_KEY).trim().length > 10) {
+        state.apiKey = String(window.GEMINI_API_KEY).trim();
+        state.keySource = "render_env";
+        updateApiKeyStatusUI();
+        return;
+      }
+
+      // 3. Check localStorage saved key
+      const savedKey = safeGetStorage("gemini_live_api_key", "");
+      if (savedKey && savedKey.trim().length > 10) {
+        state.apiKey = savedKey.trim();
+        state.keySource = "local_storage";
+        updateApiKeyStatusUI();
+        return;
+      }
+
+
+
+      updateApiKeyStatusUI();
+    }
+
+    function updateApiKeyStatusUI() {
+      const badge = document.getElementById("keyStatusBadge");
+      const envStatus = document.getElementById("envDetectionStatus");
+      const keyInput = document.getElementById("apiKeyInput");
+
+      if (state.apiKey) {
+        badge.className = "w-2 h-2 rounded-full bg-emerald-400";
+        if (state.keySource === "render_env" || state.keySource === "server_env") {
+          envStatus.innerHTML = "✅ Ключ успешно подхвачен из <strong>Render Environment (GEMINI_API_KEY)</strong>.";
+          envStatus.className = "text-[11px] text-emerald-400 mt-1.5";
+        } else {
+          envStatus.innerHTML = "✅ Ключ загружен из настроек браузера (localStorage).";
+          envStatus.className = "text-[11px] text-emerald-400 mt-1.5";
+        }
+        if (keyInput && !keyInput.value) {
+          keyInput.value = state.apiKey;
+        }
+      } else {
+        badge.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+        envStatus.innerHTML = "⚠️ Переменная <code class='font-mono'>GEMINI_API_KEY</code> не найдена в окружении. Вставьте ключ выше или настройте Build Command на Render.";
+        envStatus.className = "text-[11px] text-amber-300 mt-1.5";
+      }
+    }
+
+    // =========================================================================
+    // 3. UI & CONTROLS
+    // =========================================================================
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toastContainer");
+      if (!container) return;
+      const el = document.createElement("div");
+      const colorMap = {
+        info: "border-indigo-500/40 bg-slate-900/95 text-slate-100",
+        success: "border-emerald-500/40 bg-slate-900/95 text-emerald-200",
+        warn: "border-amber-500/40 bg-slate-900/95 text-amber-200",
+        error: "border-rose-500/40 bg-slate-900/95 text-rose-200"
+      };
+      el.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-xl text-xs font-medium transition-all duration-300 ${colorMap[type] || colorMap.info}`;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+      }
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+      }
+    }
+
+    function toggleKeyVisibility() {
+      const input = document.getElementById("apiKeyInput");
+      if (!input) return;
+      input.type = input.type === "password" ? "text" : "password";
+    }
+
+    function saveSettings() {
+      const keyInput = document.getElementById("apiKeyInput");
+      const modelSelect = document.getElementById("geminiModelSelect");
+      const chunkSelect = document.getElementById("chunkDurationSelect");
+      const contextInput = document.getElementById("contextPromptInput");
+
+      if (keyInput && keyInput.value.trim()) {
+        state.apiKey = keyInput.value.trim();
+        state.keySource = "local_storage";
+        safeSetStorage("gemini_live_api_key", state.apiKey);
+      }
+      if (modelSelect) {
+        state.model = modelSelect.value;
+        safeSetStorage("gemini_live_model", state.model);
+        document.getElementById("activeEngineLabel").textContent = `Модель: ${state.model}`;
+      }
+      if (chunkSelect) {
+        state.chunkDurationMs = parseInt(chunkSelect.value, 10) || 5000;
+      }
+      if (contextInput) {
+        state.contextPrompt = contextInput.value.trim();
+      }
+
+      updateApiKeyStatusUI();
+      closeModal("settingsModal");
+      showToast("Настройки сохранены", "success");
+    }
+
+    function setTargetLang(lang) {
+      state.targetLang = lang;
+      const btns = {
+        both: document.getElementById("langBtnBoth"),
+        ru: document.getElementById("langBtnRu"),
+        en: document.getElementById("langBtnEn")
+      };
+      Object.keys(btns).forEach((k) => {
+        if (!btns[k]) return;
+        if (k === lang) {
+          btns[k].className = "px-2.5 py-1 text-xs font-medium rounded-md transition bg-indigo-600 text-white shadow";
+        } else {
+          btns[k].className = "px-2.5 py-1 text-xs font-medium rounded-md transition text-slate-400 hover:text-white";
+        }
+      });
+      renderFeed();
+    }
+
+    function toggleTts(checked) {
+      state.ttsEnabled = checked;
+      showToast(checked ? "Озвучка перевода (TTS) включена" : "Озвучка перевода выключена", "info");
+    }
+
+    function toggleInterimStream(checked) {
+      state.autoStreamInterim = checked;
+    }
+
+    function toggleZenMode() {
+      state.zenMode = !state.zenMode;
+      const deck = document.getElementById("controlDeck");
+      const zenBtn = document.getElementById("zenToggleBtn");
+      if (state.zenMode) {
+        deck.classList.add("hidden");
+        zenBtn.classList.add("ring-2", "ring-cyan-400");
+        showToast("Режим крупных субтитров включен", "info");
+      } else {
+        deck.classList.remove("hidden");
+        zenBtn.classList.remove("ring-2", "ring-cyan-400");
+      }
+      renderFeed();
+    }
+
+    function changeCaptureMode(mode) {
+      const wasListening = state.isListening;
+      if (wasListening) {
+        stopListening();
+      }
+      state.captureMode = mode;
+      showToast(
+        mode === "hybrid"
+          ? "Режим: Web Speech (ko-KR) + gemini-3.5-flash-lite"
+          : "Режим: Прямая отправка аудио-чанков в Gemini",
+        "info"
+      );
+      if (wasListening) {
+        startListening();
+      }
+    }
+
+    // =========================================================================
+    // 4. MICROPHONE, WEB AUDIO VISUALIZER & SPEECH CAPTURE
+    // =========================================================================
+    async function toggleListening() {
+      if (state.isListening) {
+        stopListening();
+      } else {
+        await startListening();
+      }
+    }
+
+    async function startListening() {
+      if (!state.apiKey) {
+        openModal("settingsModal");
+        showToast("Пожалуйста, укажите ваш Gemini API ключ (или настройте GEMINI_API_KEY в Render)", "warn");
+      }
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+      } catch (err) {
+        showToast("Нет доступа к микрофону. Разрешите доступ в браузере или используйте кнопку «Тест корейской фразы».", "error");
+        return;
+      }
+
+      state.isListening = true;
+      updateListeningUI(true);
+      startAudioVisualizer(mediaStream);
+
+      if (state.captureMode === "hybrid") {
+        startWebSpeechRecognition();
+      } else {
+        startDirectAudioChunking(mediaStream);
+      }
+    }
+
+    function stopListening() {
+      state.isListening = false;
+      updateListeningUI(false);
+
+      if (recognition) {
+        try {
+          recognition.onend = null;
+          recognition.stop();
+        } catch (e) {}
+        recognition = null;
+      }
+
+      if (chunkIntervalTimer) {
+        clearInterval(chunkIntervalTimer);
+        chunkIntervalTimer = null;
+      }
+
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        try {
+          mediaRecorder.stop();
+        } catch (e) {}
+      }
+      mediaRecorder = null;
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        mediaStream = null;
+      }
+
+      if (audioContext) {
+        try {
+          audioContext.close();
+        } catch (e) {}
+        audioContext = null;
+      }
+
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+      drawIdleWaveform();
+    }
+
+    function updateListeningUI(listening) {
+      const btn = document.getElementById("micToggleBtn");
+      const ring = document.getElementById("micPulseRing");
+      const iconStart = document.getElementById("micIconStart");
+      const iconStop = document.getElementById("micIconStop");
+      const badge = document.getElementById("listenStateBadge");
+      const dot = document.getElementById("listenStateDot");
+      const headerDot = document.getElementById("headerStatusDot");
+      const text = document.getElementById("listenStateText");
+      const subtext = document.getElementById("statusSubtext");
+
+      if (listening) {
+        btn.className = "relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white shadow-lg shadow-rose-600/30 flex items-center justify-center transition transform active:scale-95";
+        ring.classList.remove("hidden");
+        iconStart.classList.add("hidden");
+        iconStop.classList.remove("hidden");
+        badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30";
+        dot.className = "w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping";
+        headerDot.className = "absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-slate-900";
+        text.textContent = "Слушаю корейский (LIVE)";
+        subtext.textContent = state.captureMode === "hybrid"
+          ? "Web Speech (ko-KR) + синхронный перевод gemini-3.5-flash-lite"
+          : `Прямая запись аудио в Gemini (каждые ${state.chunkDurationMs / 1000} сек)`;
+      } else {
+        btn.className = "relative z-10 w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center transition transform active:scale-95";
+        ring.classList.add("hidden");
+        iconStart.classList.remove("hidden");
+        iconStop.classList.add("hidden");
+        badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700";
+        dot.className = "w-1.5 h-1.5 rounded-full bg-slate-400";
+        headerDot.className = "absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-500 ring-2 ring-slate-900";
+        text.textContent = "Пауза / Ожидание";
+        subtext.textContent = "Нажмите на микрофон, чтобы начать слушать корейскую речь (ko-KR)";
+      }
+    }
+
+    // Web Speech API (ko-KR) for ultra-low-latency streaming
+    function startWebSpeechRecognition() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        showToast("Браузер не поддерживает Web Speech API. Переключаюсь на Прямое аудио в Gemini!", "warn");
+        document.getElementById("captureModeSelect").value = "direct_audio";
+        state.captureMode = "direct_audio";
+        startDirectAudioChunking(mediaStream);
+        return;
+      }
+
+      recognition = new SpeechRec();
+      recognition.lang = "ko-KR";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + " ";
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (interimTranscript.trim()) {
+          updateLiveKoreanBuffer(interimTranscript.trim());
+          if (state.autoStreamInterim && interimTranscript.trim().length >= 8) {
+            scheduleInterimTranslation(interimTranscript.trim());
+          }
+        }
+
+        if (finalTranscript.trim()) {
+          const cleanFinal = finalTranscript.trim();
+          updateLiveKoreanBuffer(cleanFinal);
+          if (state.interimDebounceTimer) {
+            clearTimeout(state.interimDebounceTimer);
+          }
+          translateKoreanTextWithGemini(cleanFinal, false);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          showToast("Доступ к распознаванию речи заблокирован браузером.", "error");
+          stopListening();
+        }
+      };
+
+      recognition.onend = () => {
+        // Automatically restart continuous recognition while listening
+        if (state.isListening && state.captureMode === "hybrid") {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {}
+    }
+
+    // Direct Audio Chunking to Gemini Multimodal API
+    function startDirectAudioChunking(stream) {
+      let mimeType = "audio/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
+      }
+
+      const startSegmentRecording = () => {
+        if (!state.isListening || !stream) return;
+        audioChunks = [];
+        try {
+          mediaRecorder = new MediaRecorder(stream, { mimeType });
+        } catch (err) {
+          mediaRecorder = new MediaRecorder(stream);
+        }
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            audioChunks.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          if (audioChunks.length === 0) return;
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          if (blob.size > 1500) {
+            sendAudioBlobToGemini(blob);
+          }
+        };
+
+        mediaRecorder.start();
+      };
+
+      startSegmentRecording();
+      chunkIntervalTimer = setInterval(() => {
+        if (!state.isListening) return;
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          startSegmentRecording();
+        }
+      }, state.chunkDurationMs);
+    }
+
+    function updateLiveKoreanBuffer(text) {
+      state.interimText = text;
+      const el = document.getElementById("liveKoreanText");
+      const countEl = document.getElementById("liveCharCount");
+      if (el) {
+        el.textContent = text;
+      }
+      if (countEl) {
+        countEl.textContent = `${text.length} симв.`;
+      }
+    }
+
+    function scheduleInterimTranslation(koreanSnippet) {
+      if (koreanSnippet === state.lastInterimTranslated) return;
+      if (state.interimDebounceTimer) {
+        clearTimeout(state.interimDebounceTimer);
+      }
+      state.interimDebounceTimer = setTimeout(() => {
+        state.lastInterimTranslated = koreanSnippet;
+        translateKoreanTextWithGemini(koreanSnippet, true);
+      }, 650);
+    }
+
+    // =========================================================================
+    // 5. GEMINI API INTEGRATION (TEXT & NATIVE MULTIMODAL AUDIO)
+    // =========================================================================
+    function setTranslatingIndicator(active) {
+      state.inFlightCount = Math.max(0, state.inFlightCount + (active ? 1 : -1));
+      const spinner = document.getElementById("translatingSpinner");
+      if (spinner) {
+        if (state.inFlightCount > 0) {
+          spinner.classList.remove("hidden");
+        } else {
+          spinner.classList.add("hidden");
+        }
+      }
+    }
+
+    async function translateKoreanTextWithGemini(koreanText, isInterim = false) {
+      if (!koreanText || !koreanText.trim()) return;
+
+      if (!state.apiKey) {
+        // Fallback demo notice if user hasn't entered API key yet
+        const fallbackRu = "[Демо без API ключа] Добавьте GEMINI_API_KEY в настройки или Render Environment для реального перевода Gemini.";
+        const fallbackEn = "[Demo without API key] Add GEMINI_API_KEY in Settings or Render Environment for live Gemini translation.";
+        if (isInterim) {
+          document.getElementById("liveInterimTranslation").textContent = fallbackRu;
+        } else {
+          addTranslationEntry({
+            korean: koreanText,
+            romanization: "API key required",
+            russian: fallbackRu,
+            english: fallbackEn,
+            note: "Нажмите «API & Настройки» сверху, чтобы вставить ключ Gemini."
+          });
+        }
+        return;
+      }
+
+      const startTime = performance.now();
+      setTranslatingIndicator(true);
+
+      const recentContext = state.entries
+        .slice(0, 3)
+        .map((e) => `KO: ${e.korean} -> RU: ${e.russian}`)
+        .join("\n");
+
+      const systemInstruction = `You are an expert real-time simultaneous interpreter from Korean (한국어) into Russian (Русский) and English.
+Context: ${state.contextPrompt}
+Recent conversation history:
+${recentContext || "None"}
+
+Return ONLY valid JSON with these exact keys:
+{
+  "korean": "cleaned Korean sentence",
+  "romanization": "brief phonetic pronunciation in Cyrillic or Latin",
+  "russian": "natural, accurate Russian translation",
+  "english": "natural, accurate English translation",
+  "note": "brief nuance/honorific/slang tip in Russian if helpful, or empty string"
+}`;
+
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(state.model)}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemInstruction }]
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: `Translate this Korean speech immediately:\n${koreanText}` }]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json"
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errText.slice(0, 140)}`);
+        }
+
+        const data = await response.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const parsed = JSON.parse(rawText);
+
+        const latencyMs = Math.round(performance.now() - startTime);
+        const latencyBadge = document.getElementById("latencyBadge");
+        if (latencyBadge) {
+          latencyBadge.textContent = `${latencyMs} ms`;
+          latencyBadge.classList.remove("hidden");
+        }
+
+        if (isInterim) {
+          const previewEl = document.getElementById("liveInterimTranslation");
+          if (previewEl) {
+            previewEl.innerHTML = `
+              <div class="font-medium text-cyan-200">🇷🇺 ${escapeHtml(parsed.russian || "...")}</div>
+              <div class="text-xs text-slate-300 mt-0.5">🇬🇧 ${escapeHtml(parsed.english || "...")}</div>
+            `;
+          }
+        } else {
+          const previewEl = document.getElementById("liveInterimTranslation");
+          if (previewEl) {
+            previewEl.innerHTML = `
+              <div class="font-medium text-emerald-300">🇷🇺 ${escapeHtml(parsed.russian || "")}</div>
+              <div class="text-xs text-slate-300 mt-0.5">🇬🇧 ${escapeHtml(parsed.english || "")}</div>
+            `;
+          }
+          addTranslationEntry({
+            korean: parsed.korean || koreanText,
+            romanization: parsed.romanization || "",
+            russian: parsed.russian || "",
+            english: parsed.english || "",
+            note: parsed.note || "",
+            latencyMs
+          });
+        }
+      } catch (err) {
+        if (!isInterim) {
+          showToast(`Ошибка Gemini API: ${err.message}`, "error");
+        }
+      } finally {
+        setTranslatingIndicator(false);
+      }
+    }
+
+    async function sendAudioBlobToGemini(blob) {
+      if (!state.apiKey) return;
+      const startTime = performance.now();
+      setTranslatingIndicator(true);
+
+      try {
+        const base64Audio = await blobToBase64(blob);
+        const mimeType = (blob.type || "audio/webm").split(";")[0];
+
+        const systemInstruction = `You are a real-time Korean audio interpreter. Listen to the audio clip.
+If Korean speech is present, transcribe the Korean and translate it naturally into Russian and English.
+If there is only silence or background noise with no speech, return {"silence": true}.
+Otherwise return ONLY valid JSON:
+{
+  "silence": false,
+  "korean": "transcribed Korean speech",
+  "romanization": "phonetic reading",
+  "russian": "natural Russian translation",
+  "english": "natural English translation",
+  "note": "optional nuance note in Russian"
+}`;
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(state.model)}:generateContent?key=${encodeURIComponent(state.apiKey)}`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType,
+                      data: base64Audio
+                    }
+                  },
+                  {
+                    text: "Transcribe Korean speech from this audio and translate to Russian and English."
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json"
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const parsed = JSON.parse(rawText);
+
+        if (!parsed.silence && parsed.korean && parsed.korean.trim()) {
+          const latencyMs = Math.round(performance.now() - startTime);
+          updateLiveKoreanBuffer(parsed.korean);
+          addTranslationEntry({
+            korean: parsed.korean,
+            romanization: parsed.romanization || "",
+            russian: parsed.russian || "",
+            english: parsed.english || "",
+            note: parsed.note || "",
+            latencyMs
+          });
+        }
+      } catch (err) {
+        showToast(`Ошибка аудио-перевода Gemini: ${err.message}`, "error");
+      } finally {
+        setTranslatingIndicator(false);
+      }
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = String(reader.result || "");
+          const base64 = result.includes(",") ? result.split(",")[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // =========================================================================
+    // 6. TRANSLATION FEED MANAGEMENT & TTS
+    // =========================================================================
+    function addTranslationEntry(item) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+
+      const entry = {
+        id: "entry_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        time: timeStr,
+        korean: item.korean || "",
+        romanization: item.romanization || "",
+        russian: item.russian || "",
+        english: item.english || "",
+        note: item.note || "",
+        latencyMs: item.latencyMs || null
+      };
+
+      state.entries.unshift(entry);
+      renderFeed();
+
+      if (state.ttsEnabled) {
+        speakEntry(entry);
+      }
+    }
+
+    function speakEntry(entry) {
+      if (!("speechSynthesis" in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const textToSpeak = state.targetLang === "en" ? entry.english : entry.russian;
+        const utter = new SpeechSynthesisUtterance(textToSpeak);
+        utter.lang = state.targetLang === "en" ? "en-US" : "ru-RU";
+        utter.rate = 1.05;
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    }
+
+    function speakById(id, lang) {
+      const entry = state.entries.find((e) => e.id === id);
+      if (!entry || !("speechSynthesis" in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const text = lang === "ko" ? entry.korean : lang === "en" ? entry.english : entry.russian;
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = lang === "ko" ? "ko-KR" : lang === "en" ? "en-US" : "ru-RU";
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    }
+
+    function copyEntryById(id) {
+      const entry = state.entries.find((e) => e.id === id);
+      if (!entry) return;
+      const text = `🇰🇷 ${entry.korean}\n🇷🇺 ${entry.russian}\n🇬🇧 ${entry.english}`;
+      copyText(text);
+    }
+
+    function renderFeed() {
+      const feed = document.getElementById("translationFeed");
+      const badge = document.getElementById("feedCountBadge");
+      if (!feed) return;
+
+      if (badge) {
+        badge.textContent = String(state.entries.length);
+      }
+
+      if (state.entries.length === 0) {
+        feed.innerHTML = `
+          <div class="h-60 flex flex-col items-center justify-center text-center px-4">
+            <div class="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mb-3">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+              </svg>
+            </div>
+            <p class="text-sm font-medium text-slate-300">Лента переводов пока пуста</p>
+            <p class="text-xs text-slate-400 max-w-md mt-1">
+              Нажмите на кнопку микрофона выше и говорите по-корейски, либо нажмите <strong>«▶ Тест корейской фразы»</strong> для проверки перевода.
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      const titleSize = state.zenMode ? "text-xl sm:text-2xl" : "text-base sm:text-lg";
+      const transSize = state.zenMode ? "text-xl sm:text-3xl font-bold" : "text-sm sm:text-base font-medium";
+
+      feed.innerHTML = state.entries
+        .map((item, idx) => {
+          const isLatest = idx === 0;
+          const showRu = state.targetLang === "both" || state.targetLang === "ru";
+          const showEn = state.targetLang === "both" || state.targetLang === "en";
+
+          return `
+            <article class="rounded-2xl p-4 transition border ${
+              isLatest
+                ? "bg-slate-900/95 border-indigo-500/50 shadow-lg shadow-indigo-500/5"
+                : "bg-slate-900/60 border-slate-800/90"
+            }">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-mono text-slate-400">${escapeHtml(item.time)}</span>
+                  ${
+                    isLatest
+                      ? '<span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Новое</span>'
+                      : ""
+                  }
+                  ${
+                    item.latencyMs
+                      ? `<span class="text-[10px] font-mono text-slate-500">${item.latencyMs} ms</span>`
+                      : ""
+                  }
+                </div>
+                <div class="flex items-center gap-1">
+                  <button type="button" onclick="speakById('${item.id}', 'ko')" class="px-2 py-1 rounded-md text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300" title="Прослушать оригинал (KO)">
+                    🔊 KO
+                  </button>
+                  <button type="button" onclick="speakById('${item.id}', 'ru')" class="px-2 py-1 rounded-md text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300" title="Прослушать русский (RU)">
+                    🔊 RU
+                  </button>
+                  <button type="button" onclick="copyEntryById('${item.id}')" class="px-2 py-1 rounded-md text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300" title="Скопировать">
+                    Копировать
+                  </button>
+                </div>
+              </div>
+
+              <!-- Korean Source -->
+              <div class="mb-2.5">
+                <p class="font-kr ${titleSize} font-semibold text-white leading-snug">${escapeHtml(item.korean)}</p>
+                ${
+                  item.romanization
+                    ? `<p class="text-xs text-slate-400 mt-0.5 font-mono">[${escapeHtml(item.romanization)}]</p>`
+                    : ""
+                }
+              </div>
+
+              <!-- Translations Grid -->
+              <div class="grid grid-cols-1 ${
+                showRu && showEn ? "md:grid-cols-2" : ""
+              } gap-2.5 pt-2.5 border-t border-slate-800/80">
+                ${
+                  showRu
+                    ? `
+                  <div class="rounded-xl bg-slate-950/70 border border-slate-800/90 p-3">
+                    <div class="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 mb-1">🇷🇺 Русский</div>
+                    <p class="${transSize} text-slate-100 leading-relaxed">${escapeHtml(item.russian)}</p>
+                  </div>
+                `
+                    : ""
+                }
+                ${
+                  showEn
+                    ? `
+                  <div class="rounded-xl bg-slate-950/70 border border-slate-800/90 p-3">
+                    <div class="text-[10px] font-semibold uppercase tracking-wider text-cyan-400 mb-1">🇬🇧 English</div>
+                    <p class="${transSize} text-slate-100 leading-relaxed">${escapeHtml(item.english)}</p>
+                  </div>
+                `
+                    : ""
+                }
+              </div>
+
+              ${
+                item.note
+                  ? `
+                <div class="mt-2.5 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                  💡 <strong>Нюанс:</strong> ${escapeHtml(item.note)}
+                </div>
+              `
+                  : ""
+              }
+            </article>
+          `;
+        })
+        .join("");
+    }
+
+    // =========================================================================
+    // 7. DEMO, MANUAL INPUT & EXPORT UTILITIES
+    // =========================================================================
+    async function triggerDemoPhrase() {
+      const phrase = DEMO_PHRASES[demoIndex % DEMO_PHRASES.length];
+      demoIndex++;
+      updateLiveKoreanBuffer(phrase);
+
+      if (state.apiKey) {
+        await translateKoreanTextWithGemini(phrase, false);
+      } else {
+        // Built-in accurate translations for the 4 demo sentences so the user can test immediately in Canvas
+        const presetTranslations = {
+          "안녕하세요! 오늘 프로젝트 회의는 오후 세 시에 시작합니다. 준비 다 되셨나요?": {
+            romanization: "Annyeonghaseyo! Oneul peurojekteu hoeuineun ohu se sie sijakhamnida. Junbi da doesyeonnayo?",
+            russian: "Здравствуйте! Сегодняшнее совещание по проекту начинается в три часа дня. Вы полностью готовы?",
+            english: "Hello! Today's project meeting starts at 3:00 PM. Are you all ready?",
+            note: "Вежливый официальный стиль (해요체 / 합쇼체), часто используется в офисе."
+          },
+          "서울역에서 강남역까지 지하철로 얼마나 걸리는지 알려주실 수 있나요?": {
+            romanization: "Seoulyeogeseo Gangnamyeokkaji jihacheollo eolmana geollineunji allyeojusil su innayo?",
+            russian: "Не могли бы вы подсказать, сколько времени займет дорога на метро от станции Сеул до станции Каннам?",
+            english: "Could you tell me how long it takes by subway from Seoul Station to Gangnam Station?",
+            note: "Вежливая просьба «~아/어 주실 수 있나요?»."
+          },
+          "이거 진짜 대박이네요! 실시간으로 한국어가 러시아어랑 영어로 바로 번역돼요.": {
+            romanization: "Igeo jinjja daebagineyo! Silsiganeuro hangugeoga reosiaeorang yeongeoro baro beonyeokdwaeyo.",
+            russian: "Это просто супер! Корейский язык в реальном времени сразу переводится на русский и английский.",
+            english: "This is truly awesome! Korean is translated right into Russian and English in real time.",
+            note: "«대박» (дэбак) — популярный корейский сленг: «круто / потрясающе»."
+          },
+          "내일 날씨가 많이 추워진다고 하니까 따뜻하게 입고 나오세요.": {
+            romanization: "Naeil nalssiga mani chuwojindago hanikka ttatteuthage ipgo naoseyo.",
+            russian: "Говорят, завтра сильно похолодает, поэтому одевайтесь потеплее.",
+            english: "They say the weather will get much colder tomorrow, so dress warmly when you come out.",
+            note: "Косвенная речь «~ㄴ다고 하니까» (говорят, что... поэтому...)."
+          }
+        };
+        const preset = presetTranslations[phrase];
+        addTranslationEntry({
+          korean: phrase,
+          romanization: preset.romanization,
+          russian: preset.russian,
+          english: preset.english,
+          note: preset.note,
+          latencyMs: 120
+        });
+        showToast("Демо-фраза переведена! (Для живого микрофона укажите Gemini API Key)", "info");
+      }
+    }
+
+    function handleManualSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById("manualKoreanInput");
+      if (!input || !input.value.trim()) return;
+      const text = input.value.trim();
+      input.value = "";
+      updateLiveKoreanBuffer(text);
+      translateKoreanTextWithGemini(text, false);
+    }
+
+    function clearHistory() {
+      state.entries = [];
+      renderFeed();
+      showToast("История очищена", "info");
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          () => showToast("Скопировано в буфер обмена", "success"),
+          () => fallbackCopy(text)
+        );
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        showToast("Скопировано в буфер обмена", "success");
+      } catch (err) {
+        showToast("Не удалось скопировать", "error");
+      }
+      document.body.removeChild(ta);
+    }
+
+    function copyAllTranscript() {
+      if (state.entries.length === 0) {
+        showToast("Нет записей для копирования", "warn");
+        return;
+      }
+      const all = state.entries
+        .slice()
+        .reverse()
+        .map((e) => `[${e.time}]\nKO: ${e.korean}\nRU: ${e.russian}\nEN: ${e.english}`)
+        .join("\n\n---\n\n");
+      copyText(all);
+    }
+
+    function exportTranscriptTxt() {
+      if (state.entries.length === 0) {
+        showToast("Нет записей для экспорта", "warn");
+        return;
+      }
+      const content = state.entries
+        .slice()
+        .reverse()
+        .map((e) => `[${e.time}]\nKO: ${e.korean}\nRU: ${e.russian}\nEN: ${e.english}`)
+        .join("\n\n====================================\n\n");
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ko-ru-en-transcript-${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Файл .TXT скачан", "success");
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // =========================================================================
+    // 8. REAL-TIME WAVEFORM CANVAS VISUALIZER
+    // =========================================================================
+    function resizeWaveformCanvas() {
+      const canvas = document.getElementById("waveformCanvas");
+      if (!canvas || !canvas.parentElement) return;
+      canvas.width = canvas.parentElement.clientWidth || 300;
+      canvas.height = canvas.parentElement.clientHeight || 56;
+      if (!state.isListening) {
+        drawIdleWaveform();
+      }
+    }
+
+    function drawIdleWaveform() {
+      const canvas = document.getElementById("waveformCanvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = "rgba(99, 102, 241, 0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+    }
+
+    function startAudioVisualizer(stream) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioCtx();
+        const source = audioContext.createMediaStreamSource(stream);
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 128;
+        source.connect(analyserNode);
+
+        const bufferLength = analyserNode.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        const canvas = document.getElementById("waveformCanvas");
+        const dbEl = document.getElementById("dbMeterText");
+
+        const renderFrame = () => {
+          if (!state.isListening || !analyserNode) return;
+          animFrameId = requestAnimationFrame(renderFrame);
+
+          analyserNode.getByteFrequencyData(dataArray);
+          const ctx = canvas.getContext("2d");
+          const w = canvas.width;
+          const h = canvas.height;
+          ctx.clearRect(0, 0, w, h);
+
+          let sum = 0;
+          const barWidth = Math.max(2, (w / bufferLength) * 1.4);
+          let x = 0;
+
+          for (let i = 0; i < bufferLength; i++) {
+            const val = dataArray[i];
+            sum += val;
+            const barHeight = Math.max(3, (val / 255) * (h - 6));
+            const y = (h - barHeight) / 2;
+
+            const grad = ctx.createLinearGradient(0, y, 0, y + barHeight);
+            grad.addColorStop(0, "#818cf8");
+            grad.addColorStop(0.5, "#38bdf8");
+            grad.addColorStop(1, "#6366f1");
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, barWidth - 1.5, barHeight);
+            x += barWidth;
+          }
+
+          const avg = sum / bufferLength;
+          const db = avg > 1 ? Math.round(20 * Math.log10(avg / 255)) : -60;
+          if (dbEl) {
+            dbEl.textContent = `${db} dB`;
+          }
+        };
+
+        renderFrame();
+      } catch (e) {
+        drawIdleWaveform();
+      }
+    }
+
+    // =========================================================================
+    // 9. BOOTSTRAP ON LOAD
+    // =========================================================================
+    window.addEventListener("resize", resizeWaveformCanvas);
+
+    window.addEventListener("load", async () => {
+      const savedModel = safeGetStorage("gemini_live_model", "gemini-3.5-flash-lite");
+      state.model = savedModel;
+      const modelSelect = document.getElementById("geminiModelSelect");
+      if (modelSelect) modelSelect.value = savedModel;
+      document.getElementById("activeEngineLabel").textContent = `Модель: ${state.model}`;
+
+      resizeWaveformCanvas();
+      await resolveApiKey();
+
+      // Seed 1 initial example card so the UI looks immediately rich and clear
+      addTranslationEntry({
+        korean: "안녕하세요! 마이크 버튼을 누르면 한국어 음성을 실시간으로 러시아어와 영어로 번역해 드립니다.",
+        romanization: "Annyeonghaseyo! Maikeu beoteuneul nureumyeon hangugeo eumseongeul silsiganeuro...",
+        russian: "Здравствуйте! Нажмите на кнопку микрофона, и я буду в реальном времени переводить корейскую речь на русский и английский языки.",
+        english: "Hello! Press the microphone button and I will translate Korean speech into Russian and English in real time.",
+        note: "Готово к деплою на Render: переменная GEMINI_API_KEY подхватывается автоматически.",
+        latencyMs: 95
+      });
+    });
+  </script>
+</body>
+</html>
